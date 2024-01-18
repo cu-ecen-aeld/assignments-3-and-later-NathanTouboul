@@ -1,9 +1,14 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <stdio.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
- *   successfully using the system() call, false if an error occurred,
+ *   successfully using the system() call, false if an /rror occurred,
  *   either in invocation of the system() call, or if a non-zero return
  *   value was returned by the command issued in @param cmd.
 */
@@ -16,6 +21,10 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int ret = system(cmd);
+    
+    if (ret == -1)
+	return false;
 
     return true;
 }
@@ -49,6 +58,7 @@ bool do_exec(int count, ...)
     // and may be removed
     command[count] = command[count];
 
+    va_end(args);
 /*
  * TODO:
  *   Execute a system command by calling fork, execv(),
@@ -58,9 +68,29 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+    int pid = fork();
 
-    va_end(args);
+    if (pid < 0)
+    {
+	    return false;
+    }
+    else if (pid == 0)
+    {	// Child process
+	    int err = execv(command[0], command);
 
+	    if (err == -1)
+		    exit(EXIT_FAILURE);
+    }
+    else
+    {
+    int wStatus;
+    int pid_wait = wait(&wStatus);
+    if (pid_wait == -1)
+	    return false;
+
+    if (WIFEXITED(wStatus) && WEXITSTATUS(wStatus))
+	    return false;
+    }
     return true;
 }
 
@@ -84,6 +114,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     // and may be removed
     command[count] = command[count];
 
+    va_end(args);
 
 /*
  * TODO
@@ -92,8 +123,40 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT);
+    if (fd < 0) {
+    	return false;
+    }
 
-    va_end(args);
+    int pid = fork();
+
+    if (pid < 0)
+	    return false;
+   
+    if (pid == 0)
+    {
+	// Child process
+	if (dup2(fd, 1) < 0)
+		return false;
+
+	int err = execv(command[0], command);
+
+	if (err == -1)
+	    exit(EXIT_FAILURE);
+
+	close(fd);
+    }
+    else
+    {
+	int status;
+	int pid_wait = wait(&status);
+
+	if (WIFEXITED(status) && WEXITSTATUS(status))
+		return false;
+
+	if (pid_wait == -1)
+		return false;
+    }
 
     return true;
 }
